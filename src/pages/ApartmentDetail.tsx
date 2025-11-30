@@ -131,10 +131,10 @@ const ApartmentDetail = () => {
     return (
         <div className="min-h-screen bg-background">
             <HeaderNav />
-            <main className="container mx-auto pt-24 pb-8">
+            <main className="container mx-auto px-4 pt-24 pb-8">
                 <div className="relative flex flex-col md:flex-row w-full gap-8">
                     <div className="md:w-[50%]"><ApartmentHero title={apartment.title} location={apartment.location} description={apartment.description} /></div>
-                    <div className="md:w-[50%] relative"><div className="absolute z-10 -top-2 right-0 md:-top-12 md:right-0"><BackButton /></div><ImageGallery images={apartment.images} /></div>
+                    <div className="md:w-[50%] relative"><div className="absolute z-10 -top-10 right-0 md:-top-12 md:right-0"><BackButton /></div><ImageGallery images={apartment.images} /></div>
                 </div>
 
                 <div className="grid lg:grid-cols-3 gap-8 mt-12">

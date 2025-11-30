@@ -142,7 +142,9 @@ export const HeroHome = () => {
 
                       <Button type="button" size="sm" variant="outline" onClick={() => setGuests(Math.max(1, guests - 1))}>-</Button>
 
-                      <span>{guests}</span>
+                      <span className="flex items-center justify-center w-6 h-8 text-base font-medium">
+                        {guests}
+                      </span>
 
                       <Button type="button" size="sm" variant="outline" onClick={() => setGuests(guests + 1)}>+</Button>
 
