@@ -1,117 +1,100 @@
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useStripe, useElements, PaymentElement } from "@stripe/react-stripe-js";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import { CreditCard, Send, Loader2 } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Loader2, Lock } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { useNavigate } from "react-router-dom";
 
-interface PaymentFormProps {
-  onSubmit: (data: any) => void;
-}
+export const PaymentForm = ({ bookingData }: any) => {
+  const stripe = useStripe();
+  const elements = useElements();
+  const { toast } = useToast();
+  const navigate = useNavigate();
 
-export const PaymentForm = ({ onSubmit }: PaymentFormProps) => {
-  const [paymentMethod, setPaymentMethod] = useState<"stripe" | "request">("stripe");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const [formData, setFormData] = useState({
-    firstName: "",
-    lastName: "",
-    email: "",
-    phone: ""
-  });
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [guestInfo, setGuestInfo] = useState({ firstName: "", lastName: "", email: "", phone: "" });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitting(true);
+    if (!stripe || !elements) return;
 
-    // Simuliamo un piccolo ritardo di rete
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    setIsProcessing(true);
 
-    onSubmit({ ...formData, paymentMethod });
-    setIsSubmitting(false);
-  };
+    // 1. Conferma Pagamento Stripe
+    const { error, paymentIntent } = await stripe.confirmPayment({
+      elements,
+      redirect: "if_required", // Importante: non reindirizzare se non serve (es. carta vs bonifico)
+    });
 
-  const handleInputChange = (field: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+    if (error) {
+      toast({ title: "Pagamento fallito", description: error.message, variant: "destructive" });
+      setIsProcessing(false);
+    } else if (paymentIntent && paymentIntent.status === "succeeded") {
+
+      // 2. PAGAMENTO OK -> REGISTRA SU GUESTY
+      try {
+        const res = await fetch("/confirm_booking.php", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            paymentIntentId: paymentIntent.id,
+            listingId: bookingData.apartmentId,
+            guest: guestInfo,
+            dates: { checkIn: bookingData.checkIn, checkOut: bookingData.checkOut },
+            amount: bookingData.totalPrice,
+            guests: bookingData.guests,
+            planName: bookingData.planName
+          })
+        });
+
+        const result = await res.json();
+
+        if (result.success) {
+          toast({ title: "Prenotazione Confermata!", description: "Riceverai una mail di conferma.", className: "bg-green-600 text-white" });
+          setTimeout(() => navigate("/Success"), 2000); // Crea una pagina di successo
+        } else {
+          throw new Error("Errore registrazione Guesty");
+        }
+
+      } catch (err) {
+        toast({ title: "Attenzione", description: "Pagamento ricevuto ma errore su Guesty. Contattaci.", variant: "destructive" });
+      }
+
+      setIsProcessing(false);
+    }
   };
 
   return (
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Guest Information */}
-        <Card className="bg-card border border-gray-200 rounded-xl shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold">
-              I tuoi dati
-            </CardTitle>
-          </CardHeader>
+        <Card className="border-gray-200 shadow-sm">
+          <CardHeader><CardTitle>I tuoi dati</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="firstName" className="mb-1.5 block">Nome *</Label>
-                <Input id="firstName" required value={formData.firstName} onChange={(e) => handleInputChange("firstName", e.target.value)} />
-              </div>
-              <div>
-                <Label htmlFor="lastName" className="mb-1.5 block">Cognome *</Label>
-                <Input id="lastName" required value={formData.lastName} onChange={(e) => handleInputChange("lastName", e.target.value)} />
-              </div>
+              <div><Label>Nome</Label><Input required onChange={e=>setGuestInfo({...guestInfo, firstName:e.target.value})}/></div>
+              <div><Label>Cognome</Label><Input required onChange={e=>setGuestInfo({...guestInfo, lastName:e.target.value})}/></div>
             </div>
-
-            <div>
-              <Label htmlFor="email" className="mb-1.5 block">Email *</Label>
-              <Input id="email" type="email" required value={formData.email} onChange={(e) => handleInputChange("email", e.target.value)} placeholder="nome@esempio.com" />
-            </div>
-
-            <div>
-              <Label htmlFor="phone" className="mb-1.5 block">Telefono *</Label>
-              <Input id="phone" type="tel" required value={formData.phone} onChange={(e) => handleInputChange("phone", e.target.value)} placeholder="+39..." />
-            </div>
+            <div><Label>Email</Label><Input type="email" required onChange={e=>setGuestInfo({...guestInfo, email:e.target.value})}/></div>
+            <div><Label>Telefono</Label><Input type="tel" required onChange={e=>setGuestInfo({...guestInfo, phone:e.target.value})}/></div>
           </CardContent>
         </Card>
 
-        {/* Payment Method */}
-        <Card className="bg-card border border-gray-200 rounded-xl shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold">
-              Metodo di pagamento
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
+        <Card className="border-gray-200 shadow-sm">
+          <CardHeader><CardTitle>Pagamento sicuro</CardTitle></CardHeader>
+          <CardContent>
+            {/* QUESTO COMPONENTE MOSTRA CARTA, KLARNA, GOOGLE PAY AUTOMATICAMENTE */}
+            <PaymentElement />
 
-            <label className={`flex items-center gap-3 p-4 border rounded-lg cursor-pointer transition-all ${paymentMethod === "stripe" ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-gray-200 hover:border-gray-300"}`}>
-              <input type="radio" name="paymentMethod" value="stripe" checked={paymentMethod === "stripe"} onChange={() => setPaymentMethod("stripe")} className="accent-primary h-4 w-4" />
-              <div className="flex-1">
-                <span className="flex items-center font-bold text-foreground">
-                    <CreditCard className="w-4 h-4 mr-2 text-primary" /> Carta di Credito / Debito
-                </span>
-                <p className="text-xs text-muted-foreground mt-0.5">Transazione sicura con Stripe (Visa, Mastercard, Amex)</p>
-              </div>
-            </label>
-
-            <label className={`flex items-center gap-3 p-4 border rounded-lg cursor-pointer transition-all ${paymentMethod === "request" ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-gray-200 hover:border-gray-300"}`}>
-              <input type="radio" name="paymentMethod" value="request" checked={paymentMethod === "request"} onChange={() => setPaymentMethod("request")} className="accent-primary h-4 w-4" />
-              <div className="flex-1">
-                <span className="flex items-center font-bold text-foreground">
-                    <Send className="w-4 h-4 mr-2 text-primary" /> Invia richiesta (Bonifico)
-                </span>
-                <p className="text-xs text-muted-foreground mt-0.5">Blocca le date e ricevi le istruzioni per il bonifico.</p>
-              </div>
-            </label>
-
+            <Button type="submit" disabled={!stripe || isProcessing} className="w-full mt-6 text-lg py-6 font-bold">
+              {isProcessing ? <Loader2 className="animate-spin"/> : `Paga €${bookingData.totalPrice}`}
+            </Button>
+            <p className="text-center text-xs text-muted-foreground mt-3 flex items-center justify-center gap-1">
+              <Lock className="w-3 h-3"/> Pagamento criptato SSL a 256-bit
+            </p>
           </CardContent>
         </Card>
-
-        {/* Submit */}
-        <Button type="submit" size="lg" className="w-full text-lg py-6 font-bold shadow-md" disabled={isSubmitting}>
-          {isSubmitting ? (
-              <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Elaborazione...</>
-          ) : (
-              paymentMethod === "stripe" ? "Paga e Prenota" : "Invia Richiesta"
-          )}
-        </Button>
-
-        <p className="text-xs text-center text-muted-foreground">
-          Cliccando confermi di accettare i Termini di Servizio e la Privacy Policy.
-        </p>
       </form>
   );
 };
